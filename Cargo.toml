@@ -1,0 +1,24 @@
+[package]
+name = "json-minimal-tests"
+version = "0.1.0"
+authors = ["Luni-4 <luni-4@hotmail.it>"]
+description = """
+Extracts minimal tests from the source codes of a repository when
+there are differences between the metrics computed before and after
+an update of a language parser.
+"""
+repository = "https://github.com/Luni-4/json-minimal-tests"
+keywords = ["json-diff", "minimal-tests"]
+license = "MIT"
+edition = "2018"
+
+[[bin]]
+name = "json-minimal-tests"
+
+[dependencies]
+assert-json-diff = "^1.1"
+clap = "^2.33"
+rayon = "^1.5"
+regex = "^1"
+serde_json = "^1.0"
+walkdir = "^2.3"
