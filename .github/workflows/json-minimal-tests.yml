@@ -1,0 +1,45 @@
+name: json-minimal-tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  run-program:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install stable
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+
+    - name: Build
+      run: |
+        cargo build --release
+
+    - name: Download data
+      env:
+        LINK: https://github.com/Luni-4/json-minimal-tests/releases/download/
+        VERSION: 0.0.1
+        DEST_DIR: ./data
+      run: |
+        mkdir -p $DEST_DIR
+        curl -LO "$LINK/v$VERSION/tree-sitter-javascript-old.zip"
+        unzip -qq tree-sitter-javascript-old.zip -d $DEST_DIR
+
+    - name: Run program
+      run: |
+        mkdir -p data/tree-sitter-javascript-compare
+        cargo run --release -- -o data/tree-sitter-javascript-compare/ \
+                                  data/tree-sitter-javascript-old/ \
+                                  data/tree-sitter-javascript-old/

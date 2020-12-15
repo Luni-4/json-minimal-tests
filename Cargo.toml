@@ -1,0 +1,20 @@
+[package]
+name = "json-minimal-tests"
+version = "0.1.0"
+authors = ["Luni-4 <luni-4@hotmail.it>"]
+edition = "2018"
+
+[[bin]]
+name = "json-minimal-tests"
+
+[dependencies]
+assert-json-diff = "^1.1"
+clap = "^2.33"
+rayon = "^1.5"
+regex = "^1"
+serde_json = "^1.0"
+walkdir = "^2.3"
+
+[dependencies.rust_hawktracer]
+version = "0.7"
+features=["profiling_enabled"]
