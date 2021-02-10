@@ -52,7 +52,8 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
         let mut lines: HashSet<Line> = HashSet::new();
 
         // If there are no spaces differences, but only global ones, that means
-        // there are no spaces at all in the source file.
+        // there are no spaces at all in the source file. So the entire
+        // source code is considered.
         if only_spaces.is_empty() {
             // Subtracting one since the lines of a file start from 0
             let start_line = json1.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
