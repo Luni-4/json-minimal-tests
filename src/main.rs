@@ -49,24 +49,37 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             .filter(|s| !s.is_empty())
             .collect();
 
-        // Get space start and end lines
         let mut lines: HashSet<Line> = HashSet::new();
-        for space in only_spaces {
-            let mut value = json1.get("spaces").unwrap();
-            for key in space.split(' ').skip(1) {
-                value = if let Ok(number) = key.parse::<usize>() {
-                    &value.get(number).unwrap()
-                } else {
-                    &value.get(key).unwrap()
-                };
-            }
-            // Subtracting one because file lines starts from 0
-            let start_line = value.get("start_line").unwrap().as_u64().unwrap() - 1;
-            let end_line = value.get("end_line").unwrap().as_u64().unwrap();
+
+        // If there are no spaces differences, but only global ones, that means
+        // there are no spaces at all in the source file.
+        if only_spaces.is_empty() {
+            // Subtracting one because file lines start from 0
+            let start_file = json1.get("start_line").unwrap().as_u64().unwrap() - 1;
+            let end_file = json1.get("end_line").unwrap().as_u64().unwrap();
             lines.insert(Line {
-                start_line: start_line as usize,
-                end_line: end_line as usize,
+                start_line: start_file as usize,
+                end_line: end_file as usize,
             });
+        } else {
+            // Get space start and end lines
+            for space in only_spaces {
+                let mut value = json1.get("spaces").unwrap();
+                for key in space.split(' ').skip(1) {
+                    value = if let Ok(number) = key.parse::<usize>() {
+                        &value.get(number).unwrap()
+                    } else {
+                        &value.get(key).unwrap()
+                    };
+                }
+                // Subtracting one because file lines starts from 0
+                let start_line = value.get("start_line").unwrap().as_u64().unwrap() - 1;
+                let end_line = value.get("end_line").unwrap().as_u64().unwrap();
+                lines.insert(Line {
+                    start_line: start_line as usize,
+                    end_line: end_line as usize,
+                });
+            }
         }
 
         let filename = json1.get("name").unwrap().as_str().unwrap().to_owned();
@@ -108,7 +121,12 @@ fn write<W: Write>(
             .skip(*start_line)
             .take(*end_line - *start_line)
             .collect();
-        writeln!(writer, "Minimal test - line ({}, {})", start_line, end_line)?;
+        writeln!(
+            writer,
+            "Minimal test - line ({}, {})",
+            (*start_line).max(1),
+            end_line
+        )?;
         writeln!(writer, "{}\n", lines.join("\n"))?;
     }
     Ok(())
