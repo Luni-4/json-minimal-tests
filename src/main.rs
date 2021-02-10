@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate clap;
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
+#[derive(Hash, Eq, PartialEq)]
 struct Line {
     start_line: usize,
     end_line: usize,
@@ -20,7 +22,7 @@ struct Line {
 
 struct CodeSnippets {
     filename: String,
-    lines: Vec<Line>,
+    lines: HashSet<Line>,
 }
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
@@ -48,7 +50,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             .collect();
 
         // Get space start and end lines
-        let mut lines: Vec<Line> = Vec::new();
+        let mut lines: HashSet<Line> = HashSet::new();
         for space in only_spaces {
             let mut value = json1.get("spaces").unwrap();
             for key in space.split(' ').skip(1) {
@@ -61,7 +63,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             // Subtracting one because file lines starts from 0
             let start_line = value.get("start_line").unwrap().as_u64().unwrap() - 1;
             let end_line = value.get("end_line").unwrap().as_u64().unwrap();
-            lines.push(Line {
+            lines.insert(Line {
                 start_line: start_line as usize,
                 end_line: end_line as usize,
             });
@@ -91,7 +93,11 @@ fn get_output_filename(source_path: &PathBuf) -> String {
     clean_filename.join("_") + ".txt"
 }
 
-fn write<W: Write>(writer: &mut W, source_file: &str, lines: &[Line]) -> std::io::Result<()> {
+fn write<W: Write>(
+    writer: &mut W,
+    source_file: &str,
+    lines: &HashSet<Line>,
+) -> std::io::Result<()> {
     for Line {
         start_line,
         end_line,
