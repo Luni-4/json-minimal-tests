@@ -55,11 +55,11 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
         // there are no spaces at all in the source file.
         if only_spaces.is_empty() {
             // Subtracting one since the lines of a file start from 0
-            let start_file = json1.get("start_line").unwrap().as_u64().unwrap() - 1;
-            let end_file = json1.get("end_line").unwrap().as_u64().unwrap();
+            let start_line = json1.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
+            let end_line = json1.get("end_line").unwrap().as_u64().unwrap() as usize;
             lines.insert(Line {
-                start_line: start_file as usize,
-                end_line: end_file as usize,
+                start_line,
+                end_line,
             });
         } else {
             // Get space start and end lines
@@ -73,11 +73,11 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                     };
                 }
                 // Subtracting one since the lines of a file start from 0
-                let start_line = value.get("start_line").unwrap().as_u64().unwrap() - 1;
-                let end_line = value.get("end_line").unwrap().as_u64().unwrap();
+                let start_line = value.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
+                let end_line = value.get("end_line").unwrap().as_u64().unwrap() as usize;
                 lines.insert(Line {
-                    start_line: start_line as usize,
-                    end_line: end_line as usize,
+                    start_line,
+                    end_line,
                 });
             }
         }
