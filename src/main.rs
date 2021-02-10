@@ -54,7 +54,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
         // If there are no spaces differences, but only global ones, that means
         // there are no spaces at all in the source file.
         if only_spaces.is_empty() {
-            // Subtracting one because file lines start from 0
+            // Subtracting one since the lines of a file start from 0
             let start_file = json1.get("start_line").unwrap().as_u64().unwrap() - 1;
             let end_file = json1.get("end_line").unwrap().as_u64().unwrap();
             lines.insert(Line {
@@ -72,7 +72,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                         &value.get(key).unwrap()
                     };
                 }
-                // Subtracting one because file lines starts from 0
+                // Subtracting one since the lines of a file start from 0
                 let start_line = value.get("start_line").unwrap().as_u64().unwrap() - 1;
                 let end_line = value.get("end_line").unwrap().as_u64().unwrap();
                 lines.insert(Line {
@@ -123,7 +123,7 @@ fn write<W: Write>(
             .collect();
         writeln!(
             writer,
-            "Minimal test - line ({}, {})",
+            "Minimal test - lines ({}, {})",
             (*start_line).max(1),
             end_line
         )?;
