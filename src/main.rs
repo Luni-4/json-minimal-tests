@@ -27,9 +27,15 @@ struct CodeSnippets {
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     let buffer1 = std::fs::read(path1).unwrap();
-    let json1: Value = serde_json::from_slice(&buffer1).unwrap();
+    let json1: Value = match serde_json::from_slice(&buffer1) {
+        Ok(json1) => json1,
+        Err(_) => return None,
+    };
     let buffer2 = std::fs::read(path2).unwrap();
-    let json2: Value = serde_json::from_slice(&buffer2).unwrap();
+    let json2: Value = match serde_json::from_slice(&buffer2) {
+        Ok(json2) => json2,
+        Err(_) => return None,
+    };
 
     if let Err(diff) = assert_json_eq_no_panic(&json1, &json2) {
         // Detect spaces path
