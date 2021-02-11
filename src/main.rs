@@ -14,16 +14,36 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
-#[derive(Hash, Eq, PartialEq)]
-struct Line {
+struct SpaceDiff<'a> {
+    diff: &'a str,
+    metric_diff_path: String,
+}
+
+#[derive(Hash)]
+struct LinesRange {
     start_line: usize,
     end_line: usize,
 }
 
-struct CodeSnippets {
-    filename: String,
-    lines: HashSet<Line>,
+#[derive(Hash)]
+struct SnippetData {
+    diff: String,
+    lines: LinesRange,
 }
+
+struct CodeSnippets {
+    source_filename: String,
+    snippets_data: HashSet<SnippetData>,
+}
+
+impl PartialEq for SnippetData {
+    fn eq(&self, other: &Self) -> bool {
+        self.lines.start_line == other.lines.start_line
+            && self.lines.end_line == other.lines.end_line
+    }
+}
+
+impl Eq for SnippetData {}
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     let buffer1 = std::fs::read(path1).unwrap();
@@ -40,10 +60,10 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     // Two JSON values MUST be exactly equal
     let config = Config::new(CompareMode::Strict);
 
-    if let Err(diff) = assert_json_matches_no_panic(&json1, &json2, config) {
+    if let Err(json_diff) = assert_json_matches_no_panic(&json1, &json2, config) {
         // Detect spaces path
         let re = Regex::new(r"(spaces\[\d+\])").unwrap();
-        let only_spaces: Vec<String> = diff
+        let only_spaces: Vec<SpaceDiff> = json_diff
             .lines()
             .map(|line| {
                 let all_caps: Vec<String> = re
@@ -53,12 +73,15 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                         caps_str.replace("[", " ").replace("]", "")
                     })
                     .collect();
-                all_caps.join(" ")
+                SpaceDiff {
+                    diff: line,
+                    metric_diff_path: all_caps.join(" "),
+                }
             })
-            .filter(|s| !s.is_empty())
+            .filter(|s| !s.metric_diff_path.is_empty())
             .collect();
 
-        let mut lines: HashSet<Line> = HashSet::new();
+        let mut snippets_data: HashSet<SnippetData> = HashSet::new();
 
         // If there are no spaces differences, but only global ones, that means
         // there are no spaces at all in the source file. So the entire
@@ -67,15 +90,18 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             // Subtracting one since the lines of a file start from 0
             let start_line = json1.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
             let end_line = json1.get("end_line").unwrap().as_u64().unwrap() as usize;
-            lines.insert(Line {
-                start_line,
-                end_line,
+            snippets_data.insert(SnippetData {
+                diff: json_diff,
+                lines: LinesRange {
+                    start_line,
+                    end_line,
+                },
             });
         } else {
             // Get space start and end lines
             for space in only_spaces {
                 let mut value = json1.get("spaces").unwrap();
-                for key in space.split(' ').skip(1) {
+                for key in space.metric_diff_path.split(' ').skip(1) {
                     value = if let Ok(number) = key.parse::<usize>() {
                         &value.get(number).unwrap()
                     } else {
@@ -85,17 +111,23 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                 // Subtracting one since the lines of a file start from 0
                 let start_line = value.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
                 let end_line = value.get("end_line").unwrap().as_u64().unwrap() as usize;
-                lines.insert(Line {
-                    start_line,
-                    end_line,
+                snippets_data.insert(SnippetData {
+                    diff: space.diff.to_owned(),
+                    lines: LinesRange {
+                        start_line,
+                        end_line,
+                    },
                 });
             }
         }
 
-        let filename = json1.get("name").unwrap().as_str().unwrap().to_owned();
-        println!("{}", filename);
+        let source_filename = json1.get("name").unwrap().as_str().unwrap().to_owned();
+        println!("{}", source_filename);
 
-        Some(CodeSnippets { filename, lines })
+        Some(CodeSnippets {
+            source_filename,
+            snippets_data,
+        })
     } else {
         None
     }
@@ -119,25 +151,22 @@ fn get_output_filename(source_path: &PathBuf) -> String {
 fn write<W: Write>(
     writer: &mut W,
     source_file: &str,
-    lines: &HashSet<Line>,
+    snippets_data: &HashSet<SnippetData>,
 ) -> std::io::Result<()> {
-    for Line {
-        start_line,
-        end_line,
-    } in lines
-    {
-        let lines: Vec<&str> = source_file
+    for SnippetData { diff, lines } in snippets_data {
+        let str_lines: Vec<&str> = source_file
             .lines()
-            .skip(*start_line)
-            .take(*end_line - *start_line)
+            .skip(lines.start_line)
+            .take(lines.end_line - lines.start_line)
             .collect();
+        writeln!(writer, "Diff: {}", diff,)?;
         writeln!(
             writer,
             "Minimal test - lines ({}, {})",
-            (*start_line).max(1),
-            end_line
+            lines.start_line.max(1),
+            lines.end_line
         )?;
-        writeln!(writer, "{}\n", lines.join("\n"))?;
+        writeln!(writer, "{}\n", str_lines.join("\n"))?;
     }
     Ok(())
 }
@@ -147,18 +176,18 @@ fn act_on_file(
     path2: &PathBuf,
     output_path: &Option<PathBuf>,
 ) -> std::io::Result<()> {
-    if let Some(snippet) = get_code_snippets(path1, path2) {
-        let source_path = PathBuf::from(snippet.filename);
+    if let Some(snippets) = get_code_snippets(path1, path2) {
+        let source_path = PathBuf::from(snippets.source_filename);
         let source_file = std::fs::read_to_string(&source_path)?;
 
         let output_filename = get_output_filename(&source_path);
         if let Some(output_path) = output_path {
             let mut output_file = File::create(output_path.join(output_filename))?;
-            write(&mut output_file, &source_file, &snippet.lines)?;
+            write(&mut output_file, &source_file, &snippets.snippets_data)?;
         } else {
             let stdout = std::io::stdout();
             let mut stdout = stdout.lock();
-            write(&mut stdout, &source_file, &snippet.lines)?;
+            write(&mut stdout, &source_file, &snippets.snippets_data)?;
         }
     }
 
