@@ -3,6 +3,7 @@ extern crate clap;
 
 use std::collections::HashSet;
 use std::fs::File;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process;
@@ -19,13 +20,13 @@ struct SpaceDiff<'a> {
     metric_diff_path: String,
 }
 
-#[derive(Hash)]
+#[derive(Hash, Debug)]
 struct LinesRange {
     start_line: usize,
     end_line: usize,
 }
 
-#[derive(Hash)]
+#[derive(Debug)]
 struct SnippetData {
     diff: String,
     lines: LinesRange,
@@ -44,6 +45,13 @@ impl PartialEq for SnippetData {
 }
 
 impl Eq for SnippetData {}
+
+impl Hash for SnippetData {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.lines.start_line.hash(state);
+        self.lines.end_line.hash(state);
+    }
+}
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     let buffer1 = std::fs::read(path1).unwrap();
