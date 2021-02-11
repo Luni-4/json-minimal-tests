@@ -300,3 +300,58 @@ between the metrics of the two JSON files passed in input.",
         act_on_file(&path1, &path2, &output_path).unwrap();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_duplicates() {
+        let snippets_data: HashSet<SnippetData> = vec![
+            SnippetData {
+                diff: "Test1".to_owned(),
+                lines: LinesRange {
+                    start_line: 0,
+                    end_line: 42,
+                },
+            },
+            SnippetData {
+                diff: "Test2".to_owned(),
+                lines: LinesRange {
+                    start_line: 0,
+                    end_line: 42,
+                },
+            },
+            SnippetData {
+                diff: "Test3".to_owned(),
+                lines: LinesRange {
+                    start_line: 142,
+                    end_line: 242,
+                },
+            },
+        ]
+        .into_iter()
+        .collect();
+
+        let correct_snippets: HashSet<SnippetData> = vec![
+            SnippetData {
+                diff: "Test1".to_owned(),
+                lines: LinesRange {
+                    start_line: 0,
+                    end_line: 42,
+                },
+            },
+            SnippetData {
+                diff: "Test3".to_owned(),
+                lines: LinesRange {
+                    start_line: 142,
+                    end_line: 242,
+                },
+            },
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(snippets_data, correct_snippets);
+    }
+}
