@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process;
 
-use assert_json_diff::assert_json_eq_no_panic;
+use assert_json_diff::{assert_json_matches_no_panic, CompareMode, Config};
 use clap::{App, Arg};
 use rayon::prelude::*;
 use regex::Regex;
@@ -37,7 +37,10 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
         Err(_) => return None,
     };
 
-    if let Err(diff) = assert_json_eq_no_panic(&json1, &json2) {
+    // Two JSON values MUST be exactly equal
+    let config = Config::new(CompareMode::Strict);
+
+    if let Err(diff) = assert_json_matches_no_panic(&json1, &json2, config) {
         // Detect spaces path
         let re = Regex::new(r"(spaces\[\d+\])").unwrap();
         let only_spaces: Vec<String> = diff

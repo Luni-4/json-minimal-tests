@@ -16,7 +16,7 @@ edition = "2018"
 name = "json-minimal-tests"
 
 [dependencies]
-assert-json-diff = "^1.1"
+assert-json-diff = "^2"
 clap = "^2.33"
 rayon = "^1.5"
 regex = "^1"
