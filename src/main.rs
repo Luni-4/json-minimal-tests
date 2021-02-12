@@ -15,11 +15,6 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
-struct SpaceDiff<'a> {
-    diff: &'a str,
-    metric_diff_path: String,
-}
-
 #[derive(Hash, Debug)]
 struct LinesRange {
     start_line: usize,
@@ -69,10 +64,15 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     let config = Config::new(CompareMode::Strict);
 
     if let Err(json_diff) = assert_json_matches_no_panic(&json1, &json2, config) {
+        // Get spaces diffs information
+        let spaces_diff: Vec<&str> = json_diff.lines().step_by(6).collect();
+
         // Detect spaces path
         let re = Regex::new(r"(spaces\[\d+\])").unwrap();
-        let only_spaces: Vec<SpaceDiff> = json_diff
+        let only_spaces: Vec<String> = json_diff
             .lines()
+            .step_by(6) // Skip six lines to get only the space path
+            .map(|six_lines| six_lines.lines().next().unwrap())
             .map(|line| {
                 let all_caps: Vec<String> = re
                     .find_iter(line)
@@ -81,12 +81,9 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                         caps_str.replace("[", " ").replace("]", "")
                     })
                     .collect();
-                SpaceDiff {
-                    diff: line,
-                    metric_diff_path: all_caps.join(" "),
-                }
+                all_caps.join(" ")
             })
-            .filter(|s| !s.metric_diff_path.is_empty())
+            //.filter(|s| !s.metric_diff_path.is_empty())
             .collect();
 
         let mut snippets_data: HashSet<SnippetData> = HashSet::new();
@@ -107,9 +104,9 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             });
         } else {
             // Get space start and end lines
-            for space in only_spaces {
+            for (space_diff, space_path) in spaces_diff.into_iter().zip(only_spaces.iter()) {
                 let mut value = json1.get("spaces").unwrap();
-                for key in space.metric_diff_path.split(' ').skip(1) {
+                for key in space_path.split(' ').skip(1) {
                     value = if let Ok(number) = key.parse::<usize>() {
                         &value.get(number).unwrap()
                     } else {
@@ -120,7 +117,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                 let start_line = value.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
                 let end_line = value.get("end_line").unwrap().as_u64().unwrap() as usize;
                 snippets_data.insert(SnippetData {
-                    diff: space.diff.to_owned(),
+                    diff: space_diff.to_owned(),
                     lines: LinesRange {
                         start_line,
                         end_line,
