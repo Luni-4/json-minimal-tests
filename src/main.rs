@@ -15,6 +15,13 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
+#[derive(Hash, Clone, Debug)]
+struct SnippetDiff {
+    path: String,
+    old: String,
+    new: String,
+}
+
 #[derive(Hash, Debug)]
 struct LinesRange {
     start_line: usize,
@@ -23,12 +30,13 @@ struct LinesRange {
 
 #[derive(Debug)]
 struct SnippetData {
-    diff: String,
+    diff: SnippetDiff,
     lines: LinesRange,
 }
 
 struct CodeSnippets {
     source_filename: String,
+    global_metrics: Vec<SnippetDiff>,
     snippets_data: HashSet<SnippetData>,
 }
 
@@ -64,48 +72,55 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     let config = Config::new(CompareMode::Strict);
 
     if let Err(json_diff) = assert_json_matches_no_panic(&json1, &json2, config) {
-        // Get spaces diffs information
-        let spaces_diff: Vec<&str> = json_diff.lines().step_by(6).collect();
+        // Do not consider spaces parsed ONLY by the new version of
+        // a grammar. Since they were not present in an old version, they COULD
+        //  be an improvement.
+        // FIXME: Find a more decent way to do this
+        let without_missing_spaces: Vec<&str> = json_diff
+            .lines()
+            .filter(|line| !(line.contains("is missing from") || line.is_empty()))
+            .collect();
+
+        // Get json diffs information
+        let spaces_diff: Vec<SnippetDiff> = without_missing_spaces
+            .chunks(5)
+            // Do not consider start_line, end_line, space_name, space_kind changes
+            .filter(|chunk| {
+                !(chunk[0].contains("start_line")
+                    || chunk[0].contains("end_line")
+                    || chunk[0].contains("name")
+                    || chunk[0].contains("kind"))
+            })
+            .map(|chunk| {
+                let path_tmp: Vec<&str> = chunk[0].splitn(3, '"').collect();
+                SnippetDiff {
+                    path: path_tmp[1].to_owned(),
+                    old: chunk[2].trim_start().to_owned(),
+                    new: chunk[4].trim_start().to_owned(),
+                }
+            })
+            .collect();
+
+        let mut global_metrics: Vec<SnippetDiff> = Vec::new();
+        let mut snippets_data: HashSet<SnippetData> = HashSet::new();
 
         // Detect spaces path
         let re = Regex::new(r"(spaces\[\d+\])").unwrap();
-        let only_spaces: Vec<String> = json_diff
-            .lines()
-            .step_by(6) // Skip six lines to get only the space path
-            .map(|six_lines| six_lines.lines().next().unwrap())
-            .map(|line| {
-                let all_caps: Vec<String> = re
-                    .find_iter(line)
-                    .map(|mat| {
-                        let caps_str = line.get(mat.start()..mat.end()).unwrap();
-                        caps_str.replace("[", " ").replace("]", "")
-                    })
-                    .collect();
-                all_caps.join(" ")
-            })
-            //.filter(|s| !s.metric_diff_path.is_empty())
-            .collect();
+        for diff in spaces_diff {
+            let space_path_items: Vec<String> = re
+                .find_iter(&diff.path)
+                .map(|mat| {
+                    let space_path_item = diff.path.get(mat.start()..mat.end()).unwrap();
+                    space_path_item.replace("[", " ").replace("]", "")
+                })
+                .collect();
+            let space_path = space_path_items.join(" ");
 
-        let mut snippets_data: HashSet<SnippetData> = HashSet::new();
-
-        // If there are no spaces differences, but only global ones, that means
-        // there are no spaces at all in the source file. So the entire
-        // source code is considered.
-        if only_spaces.is_empty() {
-            // Subtracting one since the lines of a file start from 0
-            let start_line = json1.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
-            let end_line = json1.get("end_line").unwrap().as_u64().unwrap() as usize;
-            snippets_data.insert(SnippetData {
-                diff: json_diff,
-                lines: LinesRange {
-                    start_line,
-                    end_line,
-                },
-            });
-        } else {
-            // Get space start and end lines
-            for (space_diff, space_path) in spaces_diff.into_iter().zip(only_spaces.iter()) {
-                let mut value = json1.get("spaces").unwrap();
+            // If empty, it is a global metric
+            if space_path.is_empty() {
+                global_metrics.push(diff);
+            } else {
+                let mut value = json2.get("spaces").unwrap();
                 for key in space_path.split(' ').skip(1) {
                     value = if let Ok(number) = key.parse::<usize>() {
                         &value.get(number).unwrap()
@@ -117,7 +132,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                 let start_line = value.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
                 let end_line = value.get("end_line").unwrap().as_u64().unwrap() as usize;
                 snippets_data.insert(SnippetData {
-                    diff: space_diff.to_owned(),
+                    diff,
                     lines: LinesRange {
                         start_line,
                         end_line,
@@ -126,11 +141,12 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             }
         }
 
-        let source_filename = json1.get("name").unwrap().as_str().unwrap().to_owned();
+        let source_filename = json2.get("name").unwrap().as_str().unwrap().to_owned();
         println!("{}", source_filename);
 
         Some(CodeSnippets {
             source_filename,
+            global_metrics,
             snippets_data,
         })
     } else {
@@ -156,22 +172,37 @@ fn get_output_filename(source_path: &PathBuf) -> String {
 fn write<W: Write>(
     writer: &mut W,
     source_file: &str,
-    snippets_data: &HashSet<SnippetData>,
+    snippets: &CodeSnippets,
 ) -> std::io::Result<()> {
-    for SnippetData { diff, lines } in snippets_data {
-        let str_lines: Vec<&str> = source_file
-            .lines()
-            .skip(lines.start_line)
-            .take(lines.end_line - lines.start_line)
-            .collect();
-        writeln!(writer, "Diff: {}", diff,)?;
-        writeln!(
-            writer,
-            "Minimal test - lines ({}, {})",
-            lines.start_line.max(1),
-            lines.end_line
-        )?;
-        writeln!(writer, "{}\n", str_lines.join("\n"))?;
+    if !snippets.global_metrics.is_empty() {
+        // Print global metrics
+        writeln!(writer, "Global Metrics")?;
+        for SnippetDiff { path, old, new } in &snippets.global_metrics {
+            writeln!(writer, "\npath: {}\nold: {}\nnew: {}\n", path, old, new)?;
+        }
+    }
+    if !snippets.snippets_data.is_empty() {
+        // Print snippets data
+        writeln!(writer, "Snippets Data")?;
+        for SnippetData { diff, lines } in &snippets.snippets_data {
+            let str_lines: Vec<&str> = source_file
+                .lines()
+                .skip(lines.start_line)
+                .take(lines.end_line - lines.start_line)
+                .collect();
+            writeln!(
+                writer,
+                "\npath: {}\nold: {}\nnew: {}\n",
+                diff.path, diff.old, diff.new
+            )?;
+            writeln!(
+                writer,
+                "Minimal test - lines ({}, {})",
+                lines.start_line + 1,
+                lines.end_line
+            )?;
+            writeln!(writer, "{}\n", str_lines.join("\n"))?;
+        }
     }
     Ok(())
 }
@@ -182,17 +213,17 @@ fn act_on_file(
     output_path: &Option<PathBuf>,
 ) -> std::io::Result<()> {
     if let Some(snippets) = get_code_snippets(path1, path2) {
-        let source_path = PathBuf::from(snippets.source_filename);
+        let source_path = PathBuf::from(&snippets.source_filename);
         let source_file = std::fs::read_to_string(&source_path)?;
 
         let output_filename = get_output_filename(&source_path);
         if let Some(output_path) = output_path {
             let mut output_file = File::create(output_path.join(output_filename))?;
-            write(&mut output_file, &source_file, &snippets.snippets_data)?;
+            write(&mut output_file, &source_file, &snippets)?;
         } else {
             let stdout = std::io::stdout();
             let mut stdout = stdout.lock();
-            write(&mut stdout, &source_file, &snippets.snippets_data)?;
+            write(&mut stdout, &source_file, &snippets)?;
         }
     }
 
