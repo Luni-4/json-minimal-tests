@@ -337,21 +337,33 @@ mod tests {
     fn no_duplicates() {
         let snippets_data: HashSet<SnippetData> = vec![
             SnippetData {
-                diff: "Test1".to_owned(),
+                diff: SnippetDiff {
+                    path: "Path1".to_owned(),
+                    old: "1.0".to_owned(),
+                    new: "2,0".to_owned(),
+                },
                 lines: LinesRange {
                     start_line: 0,
                     end_line: 42,
                 },
             },
             SnippetData {
-                diff: "Test2".to_owned(),
+                diff: SnippetDiff {
+                    path: "Path2".to_owned(),
+                    old: "1.0".to_owned(),
+                    new: "2,0".to_owned(),
+                },
                 lines: LinesRange {
                     start_line: 0,
                     end_line: 42,
                 },
             },
             SnippetData {
-                diff: "Test3".to_owned(),
+                diff: SnippetDiff {
+                    path: "Path2".to_owned(),
+                    old: "1.0".to_owned(),
+                    new: "2,0".to_owned(),
+                },
                 lines: LinesRange {
                     start_line: 142,
                     end_line: 242,
@@ -363,14 +375,22 @@ mod tests {
 
         let correct_snippets: HashSet<SnippetData> = vec![
             SnippetData {
-                diff: "Test1".to_owned(),
+                diff: SnippetDiff {
+                    path: "Path1".to_owned(),
+                    old: "1.0".to_owned(),
+                    new: "2,0".to_owned(),
+                },
                 lines: LinesRange {
                     start_line: 0,
                     end_line: 42,
                 },
             },
             SnippetData {
-                diff: "Test3".to_owned(),
+                diff: SnippetDiff {
+                    path: "Path3".to_owned(),
+                    old: "1.0".to_owned(),
+                    new: "2,0".to_owned(),
+                },
                 lines: LinesRange {
                     start_line: 142,
                     end_line: 242,
