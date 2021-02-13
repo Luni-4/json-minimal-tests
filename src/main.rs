@@ -15,6 +15,10 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
+// TODO
+// HashMap for lines
+// HTML output
+
 #[derive(Hash, Clone, Debug)]
 struct SnippetDiff {
     path: String,
