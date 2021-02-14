@@ -14,9 +14,6 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
-// TODO
-// HTML output
-
 #[derive(Clone, Debug)]
 struct SnippetDiff {
     path: String,
@@ -148,46 +145,71 @@ fn get_output_filename(source_path: &PathBuf) -> String {
         })
         .map(|s| s.to_str().unwrap())
         .collect();
-    clean_filename.join("_") + ".txt"
+    clean_filename.join("_") + ".html"
 }
 
 fn write<W: Write>(
     writer: &mut W,
+    output_filename: &str,
     source_file: &str,
     snippets: &CodeSnippets,
 ) -> std::io::Result<()> {
+    writeln!(
+        writer,
+        "<!DOCTYPE html>
+<html>
+<head>
+    <title>{}</title>
+</head>
+<body>",
+        output_filename
+    )?;
     if !snippets.global_metrics.is_empty() {
         // Print global metrics
-        writeln!(writer, "Global Metrics")?;
+        writeln!(writer, "<h1>Global Metrics</h1>")?;
         for SnippetDiff { path, old, new } in &snippets.global_metrics {
-            writeln!(writer, "\npath: {}\nold: {}\nnew: {}\n", path, old, new)?;
+            writeln!(
+                writer,
+                "<b>path:</b> {} <br>
+<b>old:</b> {} <br>
+<b>new:</b> {} <br><br>",
+                path, old, new
+            )?;
         }
     }
     if !snippets.snippets_data.is_empty() {
-        // Print snippets data
-        writeln!(writer, "Snippets Data")?;
+        // Print spaces data
+        writeln!(writer, "<h1>Spaces Data</h1>")?;
         for (lines_range, diffs) in &snippets.snippets_data {
+            writeln!(
+                writer,
+                "<h2>Minimal test - lines ({}, {})</h2>",
+                lines_range.start_line + 1,
+                lines_range.end_line
+            )?;
             for diff in diffs {
                 writeln!(
                     writer,
-                    "\npath: {}\nold: {}\nnew: {}\n",
+                    "<b>path:</b> {}<br>
+<b>old:</b> {}<br>
+<b>new:</b> {}<br><br>",
                     diff.path, diff.old, diff.new
                 )?;
             }
+            writeln!(writer, "<h3>Code</h3>")?;
             let str_lines: Vec<&str> = source_file
                 .lines()
                 .skip(lines_range.start_line)
                 .take(lines_range.end_line - lines_range.start_line)
                 .collect();
-            writeln!(
-                writer,
-                "Minimal test - lines ({}, {})",
-                lines_range.start_line + 1,
-                lines_range.end_line
-            )?;
-            writeln!(writer, "{}\n", str_lines.join("\n"))?;
+            writeln!(writer, "<i>{}</i><br>\n", str_lines.join("<br>"))?;
         }
     }
+    writeln!(
+        writer,
+        "</body>
+</html>"
+    )?;
     Ok(())
 }
 
@@ -202,12 +224,12 @@ fn act_on_file(
 
         let output_filename = get_output_filename(&source_path);
         if let Some(output_path) = output_path {
-            let mut output_file = File::create(output_path.join(output_filename))?;
-            write(&mut output_file, &source_file, &snippets)?;
+            let mut output_file = File::create(output_path.join(&output_filename))?;
+            write(&mut output_file, &output_filename, &source_file, &snippets)?;
         } else {
             let stdout = std::io::stdout();
             let mut stdout = stdout.lock();
-            write(&mut stdout, &source_file, &snippets)?;
+            write(&mut stdout, &output_filename, &source_file, &snippets)?;
         }
     }
 
