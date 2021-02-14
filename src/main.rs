@@ -1,9 +1,8 @@
 #[macro_use]
 extern crate clap;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs::File;
-use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process;
@@ -16,48 +15,25 @@ use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
 // TODO
-// HashMap for lines
 // HTML output
 
-#[derive(Hash, Clone, Debug)]
+#[derive(Clone, Debug)]
 struct SnippetDiff {
     path: String,
     old: String,
     new: String,
 }
 
-#[derive(Hash, Debug)]
+#[derive(Hash, Eq, PartialEq, Debug)]
 struct LinesRange {
     start_line: usize,
     end_line: usize,
 }
 
-#[derive(Debug)]
-struct SnippetData {
-    diff: SnippetDiff,
-    lines: LinesRange,
-}
-
 struct CodeSnippets {
     source_filename: String,
     global_metrics: Vec<SnippetDiff>,
-    snippets_data: HashSet<SnippetData>,
-}
-
-impl PartialEq for SnippetData {
-    fn eq(&self, other: &Self) -> bool {
-        self.lines.start_line == other.lines.start_line
-            && self.lines.end_line == other.lines.end_line
-    }
-}
-
-impl Eq for SnippetData {}
-
-impl Hash for SnippetData {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.lines.start_line.hash(state);
-        self.lines.end_line.hash(state);
-    }
+    snippets_data: HashMap<LinesRange, Vec<SnippetDiff>>,
 }
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
@@ -106,7 +82,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
             .collect();
 
         let mut global_metrics: Vec<SnippetDiff> = Vec::new();
-        let mut snippets_data: HashSet<SnippetData> = HashSet::new();
+        let mut snippets_data: HashMap<LinesRange, Vec<SnippetDiff>> = HashMap::new();
 
         // Detect spaces path
         let re = Regex::new(r"(spaces\[\d+\])").unwrap();
@@ -135,13 +111,15 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                 // Subtracting one since the lines of a file start from 0
                 let start_line = value.get("start_line").unwrap().as_u64().unwrap() as usize - 1;
                 let end_line = value.get("end_line").unwrap().as_u64().unwrap() as usize;
-                snippets_data.insert(SnippetData {
-                    diff,
-                    lines: LinesRange {
-                        start_line,
-                        end_line,
-                    },
-                });
+                let lines_range = LinesRange {
+                    start_line,
+                    end_line,
+                };
+                if let Some(val) = snippets_data.get_mut(&lines_range) {
+                    val.push(diff);
+                } else {
+                    snippets_data.insert(lines_range, vec![diff]);
+                }
             }
         }
 
@@ -188,22 +166,24 @@ fn write<W: Write>(
     if !snippets.snippets_data.is_empty() {
         // Print snippets data
         writeln!(writer, "Snippets Data")?;
-        for SnippetData { diff, lines } in &snippets.snippets_data {
+        for (lines_range, diffs) in &snippets.snippets_data {
+            for diff in diffs {
+                writeln!(
+                    writer,
+                    "\npath: {}\nold: {}\nnew: {}\n",
+                    diff.path, diff.old, diff.new
+                )?;
+            }
             let str_lines: Vec<&str> = source_file
                 .lines()
-                .skip(lines.start_line)
-                .take(lines.end_line - lines.start_line)
+                .skip(lines_range.start_line)
+                .take(lines_range.end_line - lines_range.start_line)
                 .collect();
             writeln!(
                 writer,
-                "\npath: {}\nold: {}\nnew: {}\n",
-                diff.path, diff.old, diff.new
-            )?;
-            writeln!(
-                writer,
                 "Minimal test - lines ({}, {})",
-                lines.start_line + 1,
-                lines.end_line
+                lines_range.start_line + 1,
+                lines_range.end_line
             )?;
             writeln!(writer, "{}\n", str_lines.join("\n"))?;
         }
