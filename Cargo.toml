@@ -1,6 +1,6 @@
 [package]
 name = "json-minimal-tests"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Luni-4 <luni-4@hotmail.it>"]
 description = """
 Extracts minimal tests from the source codes of a repository when
