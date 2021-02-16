@@ -202,7 +202,7 @@ fn write<W: Write>(
                 .skip(lines_range.start_line)
                 .take(lines_range.end_line - lines_range.start_line)
                 .collect();
-            writeln!(writer, "<i>{}</i><br>\n", str_lines.join("<br>"))?;
+            writeln!(writer, "<pre><i>{}</i></pre>\n", str_lines.join("\n"))?;
         }
     }
     writeln!(
