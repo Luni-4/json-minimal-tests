@@ -250,7 +250,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-fn explore(path1: &PathBuf, path2: &PathBuf, output_path: &Option<PathBuf>) -> std::io::Result<()> {
+fn explore(path1: &PathBuf, path2: &PathBuf, output_path: &Option<PathBuf>) {
     WalkDir::new(&path1)
         .into_iter()
         .filter_entry(|e| !is_hidden(e))
@@ -273,8 +273,6 @@ fn explore(path1: &PathBuf, path2: &PathBuf, output_path: &Option<PathBuf>) -> s
                 act_on_file(&path1_file, &path2_file, &output_path).unwrap();
             }
         });
-
-    Ok(())
 }
 
 #[inline(always)]
@@ -332,7 +330,7 @@ between the metrics of the two JSON files passed in input.",
     exist_or_exit(&path2, "second");
 
     if path1.is_dir() && path2.is_dir() {
-        explore(&path1, &path2, &output_path).unwrap();
+        explore(&path1, &path2, &output_path);
     } else if (path1.is_dir() && !path2.is_dir()) || (!path1.is_dir() && path2.is_dir()) {
         eprintln!("Both the paths should be a directory or a file",);
         process::exit(1);
