@@ -34,12 +34,18 @@ struct CodeSnippets {
 }
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
-    let buffer1 = std::fs::read(path1).unwrap();
+    let buffer1 = match std::fs::read(path1) {
+        Ok(buffer1) => buffer1,
+        Err(_) => return None,
+    };
     let json1: Value = match serde_json::from_slice(&buffer1) {
         Ok(json1) => json1,
         Err(_) => return None,
     };
-    let buffer2 = std::fs::read(path2).unwrap();
+    let buffer2 = match std::fs::read(path2) {
+        Ok(buffer2) => buffer2,
+        Err(_) => return None,
+    };
     let json2: Value = match serde_json::from_slice(&buffer2) {
         Ok(json2) => json2,
         Err(_) => return None,
