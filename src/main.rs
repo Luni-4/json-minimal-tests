@@ -269,6 +269,7 @@ fn explore(path1: &PathBuf, path2: &PathBuf, output_path: &Option<PathBuf>) {
                 && path2_file.is_file()
                 && path1_file.extension().unwrap() == "json"
                 && path2_file.extension().unwrap() == "json"
+                && path1_file.file_name().unwrap() == path2_file.file_name().unwrap()
             {
                 act_on_file(&path1_file, &path2_file, &output_path).unwrap();
             }
