@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate clap;
 
+mod non_utf8;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -13,6 +15,8 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
+
+use non_utf8::{encode_to_utf8, read_file_with_eol};
 
 #[derive(Clone, Debug)]
 struct SnippetDiff {
@@ -235,7 +239,21 @@ fn act_on_file(
 ) -> std::io::Result<()> {
     if let Some(snippets) = get_code_snippets(&path1, &path2) {
         let source_path = PathBuf::from(&snippets.source_filename);
-        let source_file = std::fs::read_to_string(&source_path)?;
+        let source_file_bytes = match read_file_with_eol(&source_path) {
+            Ok(source_file_bytes) => match source_file_bytes {
+                Some(bytes) => bytes,
+                None => return Ok(()),
+            },
+            Err(_) => return Ok(()),
+        };
+
+        let source_file = match std::str::from_utf8(&source_file_bytes) {
+            Ok(source_file) => source_file.to_owned(),
+            Err(_) => match encode_to_utf8(&source_file_bytes) {
+                Ok(source_file) => source_file,
+                Err(_) => return Ok(()),
+            },
+        };
 
         let output_filename = get_output_filename(&source_path);
         if let Some(output_path) = output_path {
