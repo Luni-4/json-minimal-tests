@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process;
+use std::{process, thread};
 
 use assert_json_diff::{assert_json_matches_no_panic, CompareMode, Config};
 use clap::{App, Arg};
-use rayon::prelude::*;
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use regex::Regex;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
@@ -32,6 +32,15 @@ struct CodeSnippets {
     global_metrics: Vec<SnippetDiff>,
     snippets_data: HashMap<LinesRange, Vec<SnippetDiff>>,
 }
+
+struct JobItem {
+    path1: PathBuf,
+    path2: PathBuf,
+    output_path: Option<PathBuf>,
+}
+
+type JobReceiver = Receiver<Option<JobItem>>;
+type JobSender = Sender<Option<JobItem>>;
 
 fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     let buffer1 = match std::fs::read(path1) {
@@ -220,11 +229,11 @@ fn write<W: Write>(
 }
 
 fn act_on_file(
-    path1: &PathBuf,
-    path2: &PathBuf,
-    output_path: &Option<PathBuf>,
+    path1: PathBuf,
+    path2: PathBuf,
+    output_path: Option<PathBuf>,
 ) -> std::io::Result<()> {
-    if let Some(snippets) = get_code_snippets(path1, path2) {
+    if let Some(snippets) = get_code_snippets(&path1, &path2) {
         let source_path = PathBuf::from(&snippets.source_filename);
         let source_file = std::fs::read_to_string(&source_path)?;
 
@@ -242,6 +251,31 @@ fn act_on_file(
     Ok(())
 }
 
+fn consumer(receiver: JobReceiver) {
+    while let Ok(job) = receiver.recv() {
+        if job.is_none() {
+            break;
+        }
+        let job = job.unwrap();
+        let path1 = job.path1.clone();
+        let path2 = job.path2.clone();
+
+        if let Err(err) = act_on_file(job.path1, job.path2, job.output_path) {
+            eprintln!("{:?} for files {:?} {:?}", err, path1, path2);
+        }
+    }
+}
+
+fn send_file(path1: PathBuf, path2: PathBuf, output_path: Option<PathBuf>, sender: &JobSender) {
+    sender
+        .send(Some(JobItem {
+            path1,
+            path2,
+            output_path,
+        }))
+        .unwrap();
+}
+
 fn is_hidden(entry: &DirEntry) -> bool {
     entry
         .file_name()
@@ -250,30 +284,33 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-fn explore(path1: &PathBuf, path2: &PathBuf, output_path: &Option<PathBuf>) {
-    WalkDir::new(&path1)
-        .into_iter()
-        .filter_entry(|e| !is_hidden(e))
-        .zip(
-            WalkDir::new(&path2)
-                .into_iter()
-                .filter_entry(|e| !is_hidden(e)),
-        )
-        .par_bridge()
-        .for_each(|(entry1, entry2)| {
-            let entry1 = entry1.as_ref().unwrap();
-            let path1_file: PathBuf = entry1.path().to_path_buf();
-            let entry2 = entry2.as_ref().unwrap();
-            let path2_file: PathBuf = entry2.path().to_path_buf();
-            if path1_file.is_file()
-                && path2_file.is_file()
-                && path1_file.extension().unwrap() == "json"
-                && path2_file.extension().unwrap() == "json"
-                && path1_file.file_name().unwrap() == path2_file.file_name().unwrap()
-            {
-                act_on_file(&path1_file, &path2_file, &output_path).unwrap();
-            }
-        });
+fn explore(path1: PathBuf, path2: PathBuf, output_path: Option<PathBuf>, sender: &JobSender) {
+    if path1.is_dir() && path2.is_dir() {
+        WalkDir::new(&path1)
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e))
+            .zip(
+                WalkDir::new(&path2)
+                    .into_iter()
+                    .filter_entry(|e| !is_hidden(e)),
+            )
+            .for_each(|(entry1, entry2)| {
+                let entry1 = entry1.as_ref().unwrap();
+                let path1_file: PathBuf = entry1.path().to_path_buf();
+                let entry2 = entry2.as_ref().unwrap();
+                let path2_file: PathBuf = entry2.path().to_path_buf();
+                if path1_file.is_file()
+                    && path2_file.is_file()
+                    && path1_file.extension().unwrap() == "json"
+                    && path2_file.extension().unwrap() == "json"
+                    && path1_file.file_name().unwrap() == path2_file.file_name().unwrap()
+                {
+                    send_file(path1_file, path2_file, output_path.clone(), sender);
+                }
+            });
+    } else {
+        send_file(path1, path2, output_path, sender);
+    }
 }
 
 #[inline(always)]
@@ -330,12 +367,50 @@ between the metrics of the two JSON files passed in input.",
     exist_or_exit(&path1, "first");
     exist_or_exit(&path2, "second");
 
-    if path1.is_dir() && path2.is_dir() {
-        explore(&path1, &path2, &output_path);
-    } else if (path1.is_dir() && !path2.is_dir()) || (!path1.is_dir() && path2.is_dir()) {
+    if (path1.is_dir() && !path2.is_dir()) || (!path1.is_dir() && path2.is_dir()) {
         eprintln!("Both the paths should be a directory or a file",);
         process::exit(1);
-    } else {
-        act_on_file(&path1, &path2, &output_path).unwrap();
+    }
+
+    let num_jobs = std::cmp::max(2, num_cpus::get()) - 1;
+
+    let (sender, receiver) = unbounded();
+
+    let producer = {
+        let sender = sender.clone();
+
+        thread::Builder::new()
+            .name(String::from("Producer"))
+            .spawn(move || explore(path1, path2, output_path, &sender))
+            .unwrap()
+    };
+
+    let mut receivers = Vec::with_capacity(num_jobs);
+    for i in 0..num_jobs {
+        let receiver = receiver.clone();
+
+        let thread = thread::Builder::new()
+            .name(format!("Consumer {}", i))
+            .spawn(move || {
+                consumer(receiver);
+            })
+            .unwrap();
+
+        receivers.push(thread);
+    }
+
+    if producer.join().is_err() {
+        process::exit(1);
+    }
+
+    // Poison the receiver, now that the producer is finished.
+    for _ in 0..num_jobs {
+        sender.send(None).unwrap();
+    }
+
+    for receiver in receivers {
+        if receiver.join().is_err() {
+            process::exit(1);
+        }
     }
 }
