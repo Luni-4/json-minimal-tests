@@ -196,6 +196,10 @@ fn write<W: Write>(
             )?;
         }
     }
+    if !snippets.global_metrics.is_empty() && snippets.snippets_data.is_empty() {
+        writeln!(writer, "<h2>Code</h2>")?;
+        writeln!(writer, "<pre><i>{}</i></pre>\n", source_file)?;
+    }
     if !snippets.snippets_data.is_empty() {
         // Print spaces data
         writeln!(writer, "<h1>Spaces Data</h1>")?;
