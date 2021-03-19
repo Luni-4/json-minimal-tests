@@ -259,14 +259,26 @@ fn act_on_file(
             },
         };
 
+        let source_escape_html = html_escape::encode_text(&source_file);
+
         let output_filename = get_output_filename(&source_path);
         if let Some(output_path) = output_path {
             let mut output_file = File::create(output_path.join(&output_filename))?;
-            write(&mut output_file, &output_filename, &source_file, &snippets)?;
+            write(
+                &mut output_file,
+                &output_filename,
+                &source_escape_html,
+                &snippets,
+            )?;
         } else {
             let stdout = std::io::stdout();
             let mut stdout = stdout.lock();
-            write(&mut stdout, &output_filename, &source_file, &snippets)?;
+            write(
+                &mut stdout,
+                &output_filename,
+                &source_escape_html,
+                &snippets,
+            )?;
         }
     }
 
