@@ -1,11 +1,11 @@
 use std::fs::{self, File};
 use std::io::{Error, ErrorKind, Read};
-use std::path::PathBuf;
+use std::path::Path;
 
 use encoding_rs::{CoderResult, SHIFT_JIS};
 
 // https://github.com/mozilla/rust-code-analysis/blob/master/src/tools.rs#L44
-pub(crate) fn read_file_with_eol(path: &PathBuf) -> std::io::Result<Option<Vec<u8>>> {
+pub(crate) fn read_file_with_eol(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     let file_size = fs::metadata(&path).map_or(1024 * 1024, |m| m.len() as usize);
     if file_size <= 3 {
         // this file is very likely almost empty... so nothing to do on it
@@ -29,7 +29,7 @@ pub(crate) fn read_file_with_eol(path: &PathBuf) -> std::io::Result<Option<Vec<u
     };
 
     // so start contains more or less 64 chars
-    let mut head = String::from_utf8_lossy(&start).into_owned();
+    let mut head = String::from_utf8_lossy(start).into_owned();
     // The last char could be wrong because we were in the middle of an utf-8 sequence
     head.pop();
     // now check if there is an invalid char
@@ -38,7 +38,7 @@ pub(crate) fn read_file_with_eol(path: &PathBuf) -> std::io::Result<Option<Vec<u
     }
 
     let mut data = Vec::with_capacity(file_size + 2);
-    data.extend_from_slice(&start);
+    data.extend_from_slice(start);
 
     file.read_to_end(&mut data)?;
 
@@ -51,7 +51,7 @@ pub(crate) fn encode_to_utf8(buf: &[u8]) -> std::io::Result<String> {
     let mut decoder = SHIFT_JIS.new_decoder();
 
     let mut buffer_bytes = [0u8; 4096];
-    let mut buffer_str = match std::str::from_utf8_mut(&mut buffer_bytes[..]) {
+    let buffer_str = match std::str::from_utf8_mut(&mut buffer_bytes[..]) {
         Ok(buffer_str) => buffer_str,
         Err(_) => {
             return Err(Error::new(
@@ -61,7 +61,7 @@ pub(crate) fn encode_to_utf8(buf: &[u8]) -> std::io::Result<String> {
         }
     };
 
-    let (result, _, _, _) = decoder.decode_to_str(buf, &mut buffer_str, true);
+    let (result, _, _, _) = decoder.decode_to_str(buf, buffer_str, true);
 
     if let CoderResult::InputEmpty = result {
         Ok(buffer_str.to_owned())

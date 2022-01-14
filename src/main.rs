@@ -6,7 +6,7 @@ mod non_utf8;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{process, thread};
 
 use assert_json_diff::{assert_json_matches_no_panic, CompareMode, Config};
@@ -46,7 +46,7 @@ struct JobItem {
 type JobReceiver = Receiver<Option<JobItem>>;
 type JobSender = Sender<Option<JobItem>>;
 
-fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
+fn get_code_snippets(path1: &Path, path2: &Path) -> Option<CodeSnippets> {
     let buffer1 = match std::fs::read(path1) {
         Ok(buffer1) => buffer1,
         Err(_) => return None,
@@ -129,9 +129,9 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                 let mut value = json2.get("spaces").unwrap();
                 for key in space_path.split(' ').skip(1) {
                     value = if let Ok(number) = key.parse::<usize>() {
-                        &value.get(number).unwrap()
+                        value.get(number).unwrap()
                     } else {
-                        &value.get(key).unwrap()
+                        value.get(key).unwrap()
                     };
                 }
                 // Subtracting one since the lines of a file start from 0
@@ -162,7 +162,7 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
     }
 }
 
-fn get_output_filename(source_path: &PathBuf) -> String {
+fn get_output_filename(source_path: &Path) -> String {
     let clean_filename: Vec<&str> = source_path
         .iter()
         .filter(|v| {
@@ -358,7 +358,7 @@ fn explore(path1: PathBuf, path2: PathBuf, output_path: Option<PathBuf>, sender:
 }
 
 #[inline(always)]
-fn exist_or_exit(path: &PathBuf, which_path: &str) {
+fn exist_or_exit(path: &Path, which_path: &str) {
     if !(path.exists()) {
         eprintln!(
             "The {} path `{}` is not correct",
