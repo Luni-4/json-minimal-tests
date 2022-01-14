@@ -85,7 +85,17 @@ fn get_code_snippets(path1: &PathBuf, path2: &PathBuf) -> Option<CodeSnippets> {
                 !(chunk[0].contains("start_line")
                     || chunk[0].contains("end_line")
                     || chunk[0].contains("name")
-                    || chunk[0].contains("kind"))
+                    || chunk[0].contains("kind")
+                    || chunk[0].contains("halstead.length")
+                    || chunk[0].contains("halstead.volume")
+                    || chunk[0].contains("halstead.vocabulary")
+                    || chunk[0].contains("halstead.purity_ratio")
+                    || chunk[0].contains("halstead.level")
+                    || chunk[0].contains("halstead.estimated_program_length")
+                    || chunk[0].contains("halstead.time")
+                    || chunk[0].contains("halstead.bugs")
+                    || chunk[0].contains("halstead.difficulty")
+                    || chunk[0].contains("halstead.effort"))
             })
             .map(|chunk| {
                 let path_tmp: Vec<&str> = chunk[0].splitn(3, '"').collect();
