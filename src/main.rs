@@ -150,7 +150,7 @@ fn get_code_snippets(path1: &Path, path2: &Path) -> Option<CodeSnippets> {
         }
 
         let source_filename = json2.get("name").unwrap().as_str().unwrap().to_owned();
-        println!("{}", source_filename);
+        println!("{source_filename}");
 
         Some(CodeSnippets {
             source_filename,
@@ -361,8 +361,7 @@ fn explore(path1: PathBuf, path2: PathBuf, output_path: Option<PathBuf>, sender:
 fn exist_or_exit(path: &Path, which_path: &str) {
     if !(path.exists()) {
         eprintln!(
-            "The {} path `{}` is not correct",
-            which_path,
+            "The {which_path} path `{}` is not correct",
             path.to_str().unwrap()
         );
         process::exit(1);
