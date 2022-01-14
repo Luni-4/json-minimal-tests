@@ -10,7 +10,7 @@ an update of a language parser.
 repository = "https://github.com/Luni-4/json-minimal-tests"
 keywords = ["json-diff", "minimal-tests"]
 license = "MIT"
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "json-minimal-tests"
