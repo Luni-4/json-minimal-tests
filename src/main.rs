@@ -95,7 +95,8 @@ fn get_code_snippets(path1: &Path, path2: &Path) -> Option<CodeSnippets> {
                     || chunk[0].contains("halstead.time")
                     || chunk[0].contains("halstead.bugs")
                     || chunk[0].contains("halstead.difficulty")
-                    || chunk[0].contains("halstead.effort"))
+                    || chunk[0].contains("halstead.effort")
+                    || chunk[0].contains("metrics.mi"))
             })
             .map(|chunk| {
                 let path_tmp: Vec<&str> = chunk[0].splitn(3, '"').collect();
