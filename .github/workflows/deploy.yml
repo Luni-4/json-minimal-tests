@@ -5,128 +5,100 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
-  windows-binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-msvc-binaries
 
-    runs-on: windows-latest
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: linux-binaries
 
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Install stable
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        override: true
-
-    - name: Build json-minimal-tests
-      run: |
-        cargo build --release
-
-    - name: Create zip
-      run: |
-        cd target/release
-        7z a ../../json-minimal-tests-windows-msvc.zip `
-             "json-minimal-tests.exe"
-
-    - name: Upload binaries
-      uses: actions/upload-artifact@v2
-      with:
-        name: windows-msvc-binaries
-        path: json-minimal-tests-windows-msvc.zip
-
-  linux-binaries:
-
-    runs-on: ubuntu-latest
+          - os: macos-latest
+            target: ''
+            artifact: macos-binaries
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
-    - name: Install musl-tools
-      run: |
-        sudo apt-get install musl-tools
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-    - name: Install Rust stable and musl target
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        target: x86_64-unknown-linux-musl
-        override: true
+      - name: Install musl-tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-    - name: Build json-minimal-tests
-      run: |
-        cargo build --release --target x86_64-unknown-linux-musl
+      - name: Build
+        if: matrix.target == ''
+        run: cargo build --release
 
-    - name: Create zip
-      run: |
-        cd target/x86_64-unknown-linux-musl/release
-        strip json-minimal-tests
-        tar -czvf $GITHUB_WORKSPACE/json-minimal-tests-linux.tar.gz \
-                  json-minimal-tests
+      - name: Build (cross-compile)
+        if: matrix.target != ''
+        run: cargo build --release --target ${{ matrix.target }}
 
-    - name: Upload binaries
-      uses: actions/upload-artifact@v2
-      with:
-        name: linux-binaries
-        path: json-minimal-tests-linux.tar.gz
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path target/release/json-minimal-tests.exe `
+            -DestinationPath json-minimal-tests-windows-msvc.zip
 
-  macos-binaries:
-
-    runs-on: macos-latest
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Install stable
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        override: true
-
-    - name: Build json-minimal-tests
-      run: |
-        cargo build --release
-
-    - name: Create zip
-      run: |
-        cd target/release
-        strip json-minimal-tests
-        zip $GITHUB_WORKSPACE/json-minimal-tests-macos.zip \
+      - name: Package Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          cd target/${{ matrix.target }}/release
+          strip json-minimal-tests
+          tar -czf "$GITHUB_WORKSPACE/json-minimal-tests-linux.tar.gz" \
             json-minimal-tests
 
-    - name: Upload binaries
-      uses: actions/upload-artifact@v2
-      with:
-        name: macos-binaries
-        path: json-minimal-tests-macos.zip
+      - name: Package macOS binary
+        if: runner.os == 'macOS'
+        run: |
+          strip target/release/json-minimal-tests
+          cd target/release
+          zip "$GITHUB_WORKSPACE/json-minimal-tests-macos.zip" \
+            json-minimal-tests
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            json-minimal-tests-windows-msvc.zip
+            json-minimal-tests-linux.tar.gz
+            json-minimal-tests-macos.zip
+          if-no-files-found: error
+          retention-days: 1
 
   deploy:
-
-    needs: [windows-binaries, linux-binaries, macos-binaries]
-
+    name: Create GitHub Release
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+      - name: Download binaries
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: '*-binaries'
+          merge-multiple: true
 
-    - name: Download zip files
-      uses: actions/download-artifact@v2
-
-    - name: Create Cargo.lock
-      run: |
-        cargo update
-
-    - name: Create a release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          Cargo.lock
-          linux-binaries/json-minimal-tests-linux.tar.gz
-          macos-binaries/json-minimal-tests-macos.zip
-          windows-msvc-binaries/json-minimal-tests-windows-msvc.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
