@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate clap;
-
 mod non_utf8;
 
 use std::collections::HashMap;
@@ -10,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::{process, thread};
 
 use assert_json_diff::{assert_json_matches_no_panic, CompareMode, Config};
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use regex::Regex;
 use serde_json::Value;
@@ -368,37 +365,38 @@ fn exist_or_exit(path: &Path, which_path: &str) {
 }
 
 fn main() {
-    let matches = App::new("json-minimal-tests")
-        .version(crate_version!())
-        .author(&*env!("CARGO_PKG_AUTHORS").replace(':', "\n"))
+    let matches = Command::new("json-minimal-tests")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
         .about(
             "Find the minimal tests from a source code using the differences
 between the metrics of the two JSON files passed in input.",
         )
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .help("Output directory")
-                .short("o")
+                .short('o')
                 .long("output")
-                .takes_value(true),
+                .num_args(1),
         )
         .arg(
-            Arg::with_name("first-json")
+            Arg::new("first-json")
                 .help("Old json file")
                 .required(true)
-                .takes_value(true),
+                .num_args(1),
         )
         .arg(
-            Arg::with_name("second-json")
+            Arg::new("second-json")
                 .help("New json file")
                 .required(true)
-                .takes_value(true),
+                .num_args(1),
         )
         .get_matches();
 
-    let path1 = PathBuf::from(matches.value_of("first-json").unwrap());
-    let path2 = PathBuf::from(matches.value_of("second-json").unwrap());
-    let output_path = if let Some(path) = matches.value_of("output") {
+    let path1 = PathBuf::from(matches.get_one::<String>("first-json").unwrap());
+    let path2 = PathBuf::from(matches.get_one::<String>("second-json").unwrap());
+
+    let output_path = if let Some(path) = matches.get_one::<String>("output") {
         let path = PathBuf::from(path);
         exist_or_exit(&path, "output");
         Some(path)
@@ -410,7 +408,7 @@ between the metrics of the two JSON files passed in input.",
     exist_or_exit(&path2, "second");
 
     if (path1.is_dir() && !path2.is_dir()) || (!path1.is_dir() && path2.is_dir()) {
-        eprintln!("Both the paths should be a directory or a file",);
+        eprintln!("Both the paths should be a directory or a file");
         process::exit(1);
     }
 
