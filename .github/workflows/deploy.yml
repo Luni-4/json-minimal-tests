@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            target: x86_64-pc-windows-msvc
+            target: ''
             artifact: windows-msvc-binaries
 
           - os: ubuntu-latest
@@ -51,11 +51,7 @@ jobs:
 
       - name: Package Windows binary
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Compress-Archive `
-            -Path target/release/json-minimal-tests.exe `
-            -DestinationPath json-minimal-tests-windows-msvc.zip
+        run: 7z a json-minimal-tests-windows-msvc.zip target/release/json-minimal-tests.exe
 
       - name: Package Linux binary
         if: runner.os == 'Linux'
