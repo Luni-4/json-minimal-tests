@@ -332,25 +332,22 @@ fn is_hidden(entry: &DirEntry) -> bool {
 
 fn explore(path1: PathBuf, path2: PathBuf, output_path: Option<PathBuf>, sender: &JobSender) {
     if path1.is_dir() && path2.is_dir() {
+        // Compare each JSON file of the first directory with the file at the
+        // same relative path in the second directory, if any. The two
+        // directories can't be walked in parallel, since their entries aren't
+        // necessarily listed in the same order.
         WalkDir::new(&path1)
             .into_iter()
             .filter_entry(|e| !is_hidden(e))
-            .zip(
-                WalkDir::new(&path2)
-                    .into_iter()
-                    .filter_entry(|e| !is_hidden(e)),
-            )
-            .for_each(|(entry1, entry2)| {
-                let entry1 = entry1.as_ref().unwrap();
-                let path1_file: PathBuf = entry1.path().to_path_buf();
-                let entry2 = entry2.as_ref().unwrap();
-                let path2_file: PathBuf = entry2.path().to_path_buf();
-                if path1_file.is_file()
-                    && path2_file.is_file()
-                    && path1_file.extension().unwrap() == "json"
-                    && path2_file.extension().unwrap() == "json"
-                    && path1_file.file_name().unwrap() == path2_file.file_name().unwrap()
-                {
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.file_type().is_file()
+                    && entry.path().extension().is_some_and(|ext| ext == "json")
+            })
+            .for_each(|entry| {
+                let path1_file = entry.path().to_path_buf();
+                let path2_file = path2.join(path1_file.strip_prefix(&path1).unwrap());
+                if path2_file.is_file() {
                     send_file(path1_file, path2_file, output_path.clone(), sender);
                 }
             });
